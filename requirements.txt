@@ -1,0 +1,8 @@
+accelerate
+datasets
+diffusers
+faiss-cpu
+imageio
+tensorboard
+tqdm
+transformers
