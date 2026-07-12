@@ -1,5 +1,6 @@
 import io
 import re
+import shutil
 import argparse
 import datasets
 import numpy as np
@@ -64,6 +65,9 @@ def convert_texture_to_heatmap(image, min_value, max_value, num_rows, num_cols):
 
 
 def convert_long_prompt_to_short(text):
+    """
+    Convert long prompt to short prompt by extracting the last number from each coordinate set.
+    """
     text = re.split(r'\s*;\s*', text.strip())
     text = [[float(num) for num in re.findall(r'[-+]?(?:\d+\.?\d*|\.\d+)', dim)] for dim in text if dim]
     text = ", ".join(f"{int(t[-1]):03d}" for t in text)
@@ -84,11 +88,6 @@ def convert_long_prompt_to_vetors(text):
 def process_subdir(subdir, output_dir, split_type):
     """
     Process a single subdirectory for either training or validation.
-    
-    Args:
-        subdir: Path to the subdirectory to process
-        output_dir: Output directory path
-        split_type: Either 'train' or 'validation'
     """
     try:
         parquet_file = subdir / (subdir.name + '.parquet')
@@ -155,14 +154,9 @@ def process_subdir(subdir, output_dir, split_type):
         return f"Error processing {subdir.name}: {str(e)}"
 
 
-def add_conditioning(subdir, train_path, is_train=True):
+def add_conditioning(subdir, output_dir, split_type):
     """
     Add conditioning images to training or validation data.
-    
-    Args:
-        subdir: Path to the subdirectory to process
-        train_path: Path to the training data directory
-        is_train: If True, use previous HRR as condition; if False, use same HRR
     """
     try:
         parquet_file = subdir / (subdir.name + '.parquet')
@@ -174,9 +168,13 @@ def add_conditioning(subdir, train_path, is_train=True):
 
         # For training: use previous HRR (or same if HRR=100)
         # For validation: use same HRR
-        condition_hrr = (hrr - 100 if hrr != 100 else hrr) if is_train else hrr
+        condition_hrr = (hrr - 100 if hrr != 100 else hrr) if split_type == "train" else hrr
         condition_subdir = Path(case + f'{condition_hrr:04d}')
-        conditioning_parquet_file = train_path / condition_subdir.name / (condition_subdir.name + '.parquet')
+
+        if split_type == "train":
+            conditioning_parquet_file = subdir / '..' / condition_subdir.name / (condition_subdir.name + '.parquet')
+        else:
+            conditioning_parquet_file = subdir / '..' / '..' / 'train' / condition_subdir.name / (condition_subdir.name + '.parquet')
         conditioning_df = pd.read_parquet(conditioning_parquet_file)
 
         df['conditioning_case'] = conditioning_df['case']
@@ -198,7 +196,7 @@ def add_conditioning(subdir, train_path, is_train=True):
                 'index_vector': datasets.Array2D(shape=df['index_vector'].iloc[0].shape, dtype='float32'),
             }),
         )
-        dataset.to_parquet(parquet_file)
+        dataset.to_parquet(output_dir / split_type / subdir.name / f'{subdir.name}.parquet')
         return f"Success: {subdir.name}"
     except Exception as e:
         return f"Error processing {subdir.name}: {str(e)}"
@@ -226,18 +224,16 @@ if __name__ == '__main__':
     )
     args = parser.parse_args()
 
-    # Convert to Path objects
+    # Preprocess
     args.dataset_dir = Path(args.dataset_dir)
-    args.output_dir = Path(args.output_dir)
-    args.output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Process training set
-    train_path = args.dataset_dir / "train"
+    cache_dir = Path(args.output_dir) / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
 
     print("Processing training set...")
-    subdirs = sorted([d for d in train_path.iterdir() if d.is_dir()])
+    dataset_dir = args.dataset_dir / "train"
+    subdirs = sorted([d for d in dataset_dir.iterdir() if d.is_dir()])
 
-    process_func = partial(process_subdir, output_dir=args.output_dir, split_type="train")
+    process_func = partial(process_subdir, output_dir=cache_dir, split_type="train")
     
     with ProcessPoolExecutor(max_workers=args.max_workers) as executor:
         futures = {executor.submit(process_func, subdir): subdir for subdir in subdirs}
@@ -247,13 +243,11 @@ if __name__ == '__main__':
             if result.startswith("Error"):
                 print(f"\n{result}")
 
-    # Process validation set
-    validation_path = args.dataset_dir / "validation"
-
     print("Processing validation set...")
-    subdirs = sorted([d for d in validation_path.iterdir() if d.is_dir()])
+    dataset_dir = args.dataset_dir / "validation"
+    subdirs = sorted([d for d in dataset_dir.iterdir() if d.is_dir()])
 
-    process_func = partial(process_subdir, output_dir=args.output_dir, split_type="validation")
+    process_func = partial(process_subdir, output_dir=cache_dir, split_type="validation")
     
     with ProcessPoolExecutor(max_workers=args.max_workers) as executor:
         futures = {executor.submit(process_func, subdir): subdir for subdir in subdirs}
@@ -263,11 +257,15 @@ if __name__ == '__main__':
             if result.startswith("Error"):
                 print(f"\n{result}")
 
-    print("Adding conditioning to train set...")
-    train_path = args.output_dir / "train"
-    subdirs = sorted([d for d in train_path.iterdir() if d.is_dir()])
 
-    process_func = partial(add_conditioning, train_path=train_path, is_train=True)
+    # Add conditioning images to training and validation sets
+    output_dir = Path(args.output_dir)
+
+    print("Adding conditioning to train set...")
+    cache_dir = Path(args.output_dir) / "cache" / "train"
+    subdirs = sorted([d for d in cache_dir.iterdir() if d.is_dir()])
+
+    process_func = partial(add_conditioning, output_dir=output_dir, split_type="train")
     
     with ProcessPoolExecutor(max_workers=args.max_workers) as executor:
         futures = {executor.submit(process_func, subdir): subdir for subdir in subdirs}
@@ -277,12 +275,11 @@ if __name__ == '__main__':
             if result.startswith("Error"):
                 print(f"\n{result}")
 
-
     print("Adding conditioning to validation set...")
-    validation_path = args.output_dir / "validation"
-    subdirs = sorted([d for d in validation_path.iterdir() if d.is_dir()])
+    cache_dir = Path(args.output_dir) / "cache" / "validation"
+    subdirs = sorted([d for d in cache_dir.iterdir() if d.is_dir()])
 
-    process_func = partial(add_conditioning, train_path=train_path, is_train=False)
+    process_func = partial(add_conditioning, output_dir=output_dir, split_type="validation")
     
     with ProcessPoolExecutor(max_workers=args.max_workers) as executor:
         futures = {executor.submit(process_func, subdir): subdir for subdir in subdirs}
@@ -291,3 +288,5 @@ if __name__ == '__main__':
             result = future.result()
             if result.startswith("Error"):
                 print(f"\n{result}")
+
+    shutil.rmtree(Path(args.output_dir) / "cache")
