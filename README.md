@@ -5,7 +5,7 @@
  only using several sensor data readings. It leverages a Stable Diffusion model 
  trained on simulated smoke fields to generate possible smoke dispersion patterns, 
  with a Visual Case-Retrieval Augmented Generation (VC-RAG) module used for eliminating 
- hallucination issues.
+ hallucination issues. For more details, please refer to our  [published paper](https://www.sciencedirect.com/science/article/abs/pii/S147403462600995X).
 
 <span id="animation"></span>
 ![animation](https://raw.githubusercontent.com/KugaMaxx/plum-rasdiff/main/assets/images/demonstration.webp "animation")
@@ -46,9 +46,9 @@ python3 run_pipeline_rasdiff.py \
   --index_dim 1024
 ```
 
-**NOTE:** Since our RAS-Diff follows the [🤗Diffusers](https://huggingface.co/docs/diffusers/index)
+**NOTE:** Since our RAS-Diff follows the 🤗[Diffusers](https://huggingface.co/docs/diffusers/index)
  library, the pretrained model and dataset will be automatically downloaded from 
- the [🤗Hugging Face](https://huggingface.co/) when you run the script above. Or you 
+ the 🤗[Hugging Face](https://huggingface.co/) when you run the script above. Or you 
  can download from [here](https://huggingface.co/KugaMaxx) and specify the local path.
 
 ## Custom Model Training
@@ -125,6 +125,11 @@ If you find RAS-Diff inspiring or helpful for your own research, please consider
 ```bibtex
 @article{ding2025rasdiff,
   title = {Sensor-based Smoke Reconstruction via Retrieval-Augmented Generative Model},
+  author={Ding, Saizhe and Zhang, Yuxin and Wu, Xiqiang and Xie, Weikang and Lu, Tong and Fan, Tianyu and Huang, Xinyan},
+  journal={Advanced Engineering Informatics},
+  pages={105303},
+  year={2026},
+  publisher={Elsevier}
 }
 ```
 
