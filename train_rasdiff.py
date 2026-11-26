@@ -63,8 +63,11 @@ def parse_args():
     parser.add_argument(
         "--controlnet_model_name_or_path",
         type=str,
-        required=True,
-        help="Path to pretrained controlnet model or model identifier from huggingface.co/models. If not specified, controlnet weights are initialized from unet.",
+        default=None,
+        help=(
+            "Path to pretrained controlnet model or model identifier from huggingface.co/models. "
+            "If not specified, controlnet weights are initialized from unet."
+        ),
     )
     parser.add_argument(
         "--revision",
